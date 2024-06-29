@@ -68,6 +68,7 @@ public abstract class FlatpakGradleGeneratorTask extends DefaultTask {
     private ArtifactResolver resolver;
     private PomHandler POMHandler;
     private ModuleMetadata moduleMetadata;
+    private Map<String, List<String>> resolved = new HashMap<>();
 
     /**
      * Run the flatpakGradleGenerator task.
@@ -97,7 +98,10 @@ public abstract class FlatpakGradleGeneratorTask extends DefaultTask {
 
         // Loop through configurations and generate json blocks for the
         // resolved dependencies
-        for (var configuration : project.getConfigurations()) {
+        var configurations = project.getConfigurations();
+        var i = 0;
+        for (var configuration : configurations) {
+            System.out.printf("Resolving sources for configuration %d of %d: %s\n", ++i, configurations.size(), configuration.toString());
             if (configuration.isCanBeResolved()) {
                 generateSourcesList(repositories, configuration);
             }
@@ -165,10 +169,19 @@ public abstract class FlatpakGradleGeneratorTask extends DefaultTask {
                                      Configuration configuration)
             throws IOException, NoSuchAlgorithmException {
 
-        for (var dependency : listDependencies(configuration)) {
+        List<ResolvedDependencyResult> dependencies = listDependencies(configuration);
+        var i = 0;
+
+        for (var dependency : dependencies) {
 
             String id = dependency.getSelected().getId().getDisplayName();
             String variant = dependency.getResolvedVariant().getDisplayName();
+
+            System.out.printf("Resolving dependency %d of %d %s %s\n", ++i, dependencies.size(), id, variant);
+
+            if (resolved.get(id) != null && resolved.get(id).contains(variant)) {
+                continue;
+            }
 
             // Skip dependencies on local Gradle projects
             if (id.startsWith("project "))
@@ -253,6 +266,8 @@ public abstract class FlatpakGradleGeneratorTask extends DefaultTask {
                 if (repository.equals(GRADLE_PLUGIN_PORTAL)
                         && dep.group().startsWith("gradle.plugin."))
                     addPluginMarker(dep);
+
+                resolved.computeIfAbsent(id, k -> new ArrayList<>()).add(variant);
 
                 // Success! No need to resolve this dependency against other repositories
                 if (module.isPresent() || pom.isPresent())
